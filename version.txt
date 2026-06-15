@@ -1,6 +1,7 @@
 Inventario Bodega · Vinculación Ciudadana
-Versión: 1.0
+Versión: 1.1
 Fuente de datos: Google Sheets publicado en CSV
 Hoja: STOCK_ACTUAL
 GID: 265782808
 Actualización automática: 60 segundos
+Operaciones: Apps Script opcional para MOVIMIENTOS

@@ -1,6 +1,8 @@
 const CONFIG = {
   stockActualCsvUrl:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vR3YzCfkRrc-osRMQ9WWQxJLvoKjMgyHe4b_-GpwpeDCNfWrIfoA90GGKO2SAkaPV1yMZwsG2T6oMkz/pub?gid=265782808&single=true&output=csv",
+  movimientosCsvUrl: "",
+  appsScriptUrl: "",
   refreshIntervalMs: 60000,
   appName: "Inventario Bodega · Vinculación Ciudadana",
 };
@@ -19,38 +21,54 @@ const STOCK_ACTUAL_REQUIRED_HEADERS = [
 const STOCK_ACTUAL_HEADER_ERROR =
   "La URL CSV no corresponde a STOCK_ACTUAL. Copia la URL publicada en CSV de la pestaña STOCK_ACTUAL.";
 
+const NEGATIVE_MOVEMENT_TYPES = new Set(["SALIDA", "AJUSTE-"]);
+const MOVEMENT_TYPES = ["ENTRADA", "SALIDA", "AJUSTE+", "AJUSTE-", "TRASLADO"];
+
 const FIELD_ALIASES = {
-  sku: ["sku", "sku_nuevo", "codigo", "codigo_original", "clave"],
+  sku: ["sku", "codigo", "clave"],
   categoria: ["categoria", "category"],
   articulo: ["articulo_insumo", "articulo", "insumo", "producto", "material", "nombre"],
-  descripcion: ["descripcion", "detalle", "detalle_detectado", "description"],
+  descripcion: ["descripcion", "detalle", "description"],
   unidad: ["unidad", "unidades", "medida"],
   ubicacion: ["ubicacion", "bodega", "almacen", "localizacion"],
   existenciaInicial: ["existencia_inicial", "inicial"],
   entradas: ["entradas", "entrada"],
   salidas: ["salidas", "salida"],
   ajustesNetos: ["ajustes_netos", "ajuste_neto", "ajustes"],
-  existenciaFisica: ["existencia_fisica", "existencia", "stock", "cantidad", "inventario_actual"],
-  comprometidoReservado: [
-    "comprometido_reservado",
-    "comprometido",
-    "reservado",
-    "reservados",
-  ],
-  disponibleReal: ["disponible_real", "disponible", "stock_disponible"],
+  existenciaFisica: ["existencia_fisica"],
+  comprometidoReservado: ["comprometido_reservado", "comprometido", "reservado"],
+  disponibleReal: ["disponible_real", "disponible"],
   stockMinimo: ["stock_minimo", "minimo", "existencia_minima"],
-  semaforo: ["semaforo", "estado", "estatus", "prioridad"],
+  semaforo: ["semaforo", "estado", "estatus"],
   proveedorPendiente: ["proveedor_pendiente", "pendiente_proveedor", "por_recibir"],
   ultimaActualizacion: ["ultima_actualizacion", "actualizacion", "fecha_actualizacion"],
   responsable: ["responsable", "capturo", "encargado"],
-  observaciones: ["observaciones", "observacion", "detalle_detectado", "nota", "notas"],
+  observaciones: ["observaciones", "observacion", "nota", "notas"],
+};
+
+const MOVEMENT_ALIASES = {
+  fecha: ["fecha"],
+  sku: ["sku"],
+  articulo: ["articulo_insumo", "articulo", "insumo"],
+  tipo: ["tipo_movimiento", "tipo"],
+  cantidad: ["cantidad"],
+  unidad: ["unidad"],
+  origenDestino: ["origen_destino", "origen", "destino"],
+  responsable: ["responsable"],
+  folioOficio: ["folio_oficio", "folio", "oficio"],
+  evidencia: ["evidencia_liga", "evidencia", "liga"],
+  estatusMovimiento: ["estatus_movimiento", "estatus"],
+  observaciones: ["observaciones", "observacion"],
+  capturo: ["capturo"],
 };
 
 const state = {
   rawRows: [],
   rows: [],
   filteredRows: [],
+  movements: [],
   loading: false,
+  savingMovement: false,
   searchIsActive: false,
   lastLoadedAt: null,
 };
@@ -61,11 +79,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.title = CONFIG.appName;
   bindElements();
   bindEvents();
+  renderOperationStatus();
   loadInventory();
+  loadMovements();
+
   window.setInterval(() => {
-    if (!state.searchIsActive && document.activeElement !== elements.searchInput) {
-      loadInventory({ silent: true });
-    }
+    if (shouldSkipAutomaticRefresh()) return;
+    loadInventory({ silent: true });
+    loadMovements({ silent: true });
   }, CONFIG.refreshIntervalMs);
 });
 
@@ -93,6 +114,28 @@ function bindElements() {
     "tableCount",
     "errorMessage",
     "inventoryBody",
+    "operationStatus",
+    "openMovementModalBtn",
+    "movementDialog",
+    "movementForm",
+    "movementFormMessage",
+    "closeMovementModalBtn",
+    "cancelMovementBtn",
+    "saveMovementBtn",
+    "movementType",
+    "movementSku",
+    "skuOptions",
+    "movementArticle",
+    "movementQuantity",
+    "movementUnit",
+    "movementOriginDestination",
+    "movementResponsible",
+    "movementFolio",
+    "movementEvidence",
+    "movementNotes",
+    "movementCapturedBy",
+    "movementCount",
+    "movementsBody",
   ];
 
   ids.forEach((id) => {
@@ -116,16 +159,27 @@ function bindEvents() {
     elements.locationFilter,
   ].forEach((select) => select.addEventListener("change", applyFilters));
 
-  elements.clearFiltersBtn.addEventListener("click", () => {
-    elements.searchInput.value = "";
-    elements.categoryFilter.value = "";
-    elements.semaphoreFilter.value = "";
-    elements.unitFilter.value = "";
-    elements.locationFilter.value = "";
-    applyFilters();
+  elements.clearFiltersBtn.addEventListener("click", clearFilters);
+  elements.refreshBtn.addEventListener("click", () => {
+    loadInventory();
+    loadMovements();
   });
 
-  elements.refreshBtn.addEventListener("click", () => loadInventory());
+  elements.openMovementModalBtn.addEventListener("click", openMovementModal);
+  elements.closeMovementModalBtn.addEventListener("click", closeMovementModal);
+  elements.cancelMovementBtn.addEventListener("click", closeMovementModal);
+  elements.movementDialog.addEventListener("click", closeDialogFromBackdrop);
+  elements.movementSku.addEventListener("input", syncMovementSkuFields);
+  elements.movementForm.addEventListener("submit", handleMovementSubmit);
+}
+
+function shouldSkipAutomaticRefresh() {
+  return (
+    state.searchIsActive ||
+    document.activeElement === elements.searchInput ||
+    document.activeElement === elements.movementSku ||
+    elements.movementDialog.open
+  );
 }
 
 async function loadInventory(options = {}) {
@@ -151,6 +205,7 @@ async function loadInventory(options = {}) {
     state.lastLoadedAt = new Date();
 
     renderFilters(state.rows);
+    renderSkuOptions(state.rows);
     applyFilters();
     renderKPIs(state.rows);
     updateLastSync();
@@ -165,6 +220,33 @@ async function loadInventory(options = {}) {
     setLoadingState("Error de carga");
   } finally {
     state.loading = false;
+  }
+}
+
+async function loadMovements(options = {}) {
+  if (!CONFIG.movimientosCsvUrl.trim()) {
+    if (!state.movements.length || !options.silent) {
+      renderMovementsTable(state.movements);
+    }
+    return;
+  }
+
+  try {
+    const csvText = await fetchCSV(CONFIG.movimientosCsvUrl);
+    const parsedCsv = parseCSVWithHeaders(csvText);
+    state.movements = parsedCsv.rows.map(normalizeMovementRow).filter(isUsefulMovement);
+    renderMovementsTable(state.movements);
+  } catch (error) {
+    console.error(error);
+    if (!options.silent) {
+      elements.movementsBody.innerHTML = `
+        <tr>
+          <td colspan="8">
+            <div class="empty-state">No se pudieron cargar los últimos movimientos.</div>
+          </td>
+        </tr>
+      `;
+    }
   }
 }
 
@@ -329,6 +411,28 @@ function normalizeRow(row) {
   return normalized;
 }
 
+function normalizeMovementRow(row) {
+  const getText = (field) => getFirstValue(row, MOVEMENT_ALIASES[field]);
+  const movement = {
+    fecha: getText("fecha"),
+    sku: getText("sku"),
+    articulo: getText("articulo"),
+    tipo: getText("tipo"),
+    cantidad: makeNumberField(getText("cantidad")),
+    unidad: getText("unidad"),
+    origenDestino: getText("origenDestino"),
+    responsable: getText("responsable"),
+    folioOficio: getText("folioOficio"),
+    evidencia: getText("evidencia"),
+    estatusMovimiento: getText("estatusMovimiento"),
+    observaciones: getText("observaciones"),
+    capturo: getText("capturo"),
+  };
+
+  movement.sortTime = getMovementSortTime(movement.fecha);
+  return movement;
+}
+
 function getFirstValue(row, aliases) {
   for (const alias of aliases) {
     if (Object.prototype.hasOwnProperty.call(row, alias) && String(row[alias]).trim() !== "") {
@@ -349,15 +453,13 @@ function makeNumberField(value, forced = false) {
 function parseNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
 
-  const cleaned = String(value ?? "")
-    .trim()
-    .replace(/\s/g, "")
-    .replace(/\$/g, "")
-    .replace(/,/g, "");
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
 
-  if (!cleaned) return 0;
-
-  const parsed = Number(cleaned);
+  const cleaned = raw.replace(/\s/g, "").replace(/\$/g, "");
+  const decimalComma = /^[+-]?\d+,\d{1,2}$/.test(cleaned);
+  const normalized = decimalComma ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -404,6 +506,10 @@ function isUsefulRow(row) {
       row.observaciones ||
       row.existenciaFisica.hasValue,
   );
+}
+
+function isUsefulMovement(movement) {
+  return Boolean(movement.fecha || movement.sku || movement.articulo || movement.tipo);
 }
 
 function sortInventory(rows) {
@@ -507,10 +613,16 @@ function renderFilters(data) {
   fillSelect(elements.unitFilter, uniqueValues(data, "unidad"), "Todas");
   fillSelect(elements.locationFilter, uniqueValues(data, "ubicacion"), "Todas");
 
-  elements.categoryFilter.value = previousValues.category;
-  elements.semaphoreFilter.value = previousValues.semaphore;
-  elements.unitFilter.value = previousValues.unit;
-  elements.locationFilter.value = previousValues.location;
+  restoreSelectValue(elements.categoryFilter, previousValues.category);
+  restoreSelectValue(elements.semaphoreFilter, previousValues.semaphore);
+  restoreSelectValue(elements.unitFilter, previousValues.unit);
+  restoreSelectValue(elements.locationFilter, previousValues.location);
+}
+
+function restoreSelectValue(select, value) {
+  if ([...select.options].some((option) => option.value === value)) {
+    select.value = value;
+  }
 }
 
 function uniqueValues(data, field) {
@@ -528,6 +640,26 @@ function fillSelect(select, values, defaultLabel) {
     )
     .join("");
   select.innerHTML = options;
+}
+
+function renderSkuOptions(data) {
+  elements.skuOptions.innerHTML = data
+    .filter((row) => row.sku)
+    .sort((a, b) => a.sku.localeCompare(b.sku, "es"))
+    .map(
+      (row) =>
+        `<option value="${escapeHTML(row.sku)}" label="${escapeHTML(row.articulo || row.descripcion || "")}"></option>`,
+    )
+    .join("");
+}
+
+function clearFilters() {
+  elements.searchInput.value = "";
+  elements.categoryFilter.value = "";
+  elements.semaphoreFilter.value = "";
+  elements.unitFilter.value = "";
+  elements.locationFilter.value = "";
+  applyFilters();
 }
 
 function applyFilters() {
@@ -631,6 +763,292 @@ function renderSemaphoreChip(value) {
   return `<span class="chip ${chipClass}">${escapeHTML(semaphore)}</span>`;
 }
 
+function renderOperationStatus(message) {
+  const connected = Boolean(CONFIG.appsScriptUrl.trim());
+  elements.operationStatus.classList.toggle("connected", connected);
+  elements.operationStatus.textContent =
+    message ||
+    (connected
+      ? "Conexión a Apps Script configurada. Los movimientos se registrarán en MOVIMIENTOS."
+      : "Registro pendiente de conexión a Apps Script.");
+}
+
+function renderMovementsTable(movements) {
+  const orderedMovements = [...movements]
+    .sort((a, b) => b.sortTime - a.sortTime)
+    .slice(0, 25);
+
+  elements.movementCount.textContent = `${orderedMovements.length} ${
+    orderedMovements.length === 1 ? "movimiento" : "movimientos"
+  }`;
+
+  if (!orderedMovements.length) {
+    elements.movementsBody.innerHTML = `
+      <tr>
+        <td colspan="8">
+          <div class="empty-state">Últimos movimientos pendientes de conexión.</div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  elements.movementsBody.innerHTML = orderedMovements
+    .map(
+      (movement) => `
+        <tr>
+          <td>${escapeHTML(displayValue(movement.fecha))}</td>
+          <td class="sku-cell">${escapeHTML(displayValue(movement.sku))}</td>
+          <td>${escapeHTML(displayValue(movement.articulo))}</td>
+          <td>${escapeHTML(displayValue(movement.tipo))}</td>
+          <td class="number-cell">${escapeHTML(
+            formatNumber(movement.cantidad.value, movement.cantidad.hasValue),
+          )}</td>
+          <td>${escapeHTML(displayValue(movement.responsable))}</td>
+          <td>${escapeHTML(displayValue(movement.folioOficio))}</td>
+          <td class="notes-cell">${escapeHTML(displayValue(movement.observaciones))}</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function getMovementSortTime(value) {
+  const parsed = Date.parse(value);
+  if (Number.isFinite(parsed)) return parsed;
+  return 0;
+}
+
+function openMovementModal() {
+  resetMovementForm();
+  renderOperationStatus();
+  if (typeof elements.movementDialog.showModal === "function") {
+    elements.movementDialog.showModal();
+  } else {
+    elements.movementDialog.setAttribute("open", "");
+  }
+  elements.movementSku.focus();
+}
+
+function closeMovementModal() {
+  hideMovementMessage();
+  if (elements.movementDialog.open && typeof elements.movementDialog.close === "function") {
+    elements.movementDialog.close();
+  } else {
+    elements.movementDialog.removeAttribute("open");
+  }
+}
+
+function closeDialogFromBackdrop(event) {
+  if (event.target === elements.movementDialog) {
+    closeMovementModal();
+  }
+}
+
+function resetMovementForm() {
+  elements.movementForm.reset();
+  elements.movementType.value = "ENTRADA";
+  elements.movementArticle.value = "";
+  elements.movementUnit.value = "";
+  hideMovementMessage();
+  setSaveButtonLoading(false);
+}
+
+function syncMovementSkuFields() {
+  const item = findInventoryBySku(elements.movementSku.value);
+  elements.movementArticle.value = item ? item.articulo || item.descripcion || "" : "";
+  elements.movementUnit.value = item ? item.unidad || "" : "";
+}
+
+async function handleMovementSubmit(event) {
+  event.preventDefault();
+  hideMovementMessage();
+
+  const validation = validateMovementForm();
+  if (!validation.ok) {
+    showMovementMessage(validation.message, "error");
+    return;
+  }
+
+  const movement = validation.movement;
+  if (
+    NEGATIVE_MOVEMENT_TYPES.has(movement.tipo) &&
+    !window.confirm(`Confirmar ${movement.tipo} por ${formatNumber(movement.cantidad, true)} ${movement.unidad}.`)
+  ) {
+    return;
+  }
+
+  if (!CONFIG.appsScriptUrl.trim()) {
+    showMovementMessage("Registro pendiente de conexión a Apps Script.", "info");
+    renderOperationStatus("Registro pendiente de conexión a Apps Script.");
+    return;
+  }
+
+  try {
+    setSaveButtonLoading(true);
+    const response = await postMovement(movement);
+    if (!response.ok) {
+      throw new Error(response.message || "No se pudo registrar el movimiento.");
+    }
+
+    showMovementMessage(response.message || "Movimiento registrado correctamente", "success");
+    addLocalMovement(movement);
+    renderOperationStatus("Movimiento registrado correctamente.");
+    await loadInventory({ silent: true });
+    if (CONFIG.movimientosCsvUrl.trim()) {
+      await loadMovements({ silent: true });
+    }
+    window.setTimeout(closeMovementModal, 900);
+  } catch (error) {
+    console.error(error);
+    showMovementMessage(error.message || "No se pudo registrar el movimiento.", "error");
+  } finally {
+    setSaveButtonLoading(false);
+  }
+}
+
+function validateMovementForm() {
+  const sku = elements.movementSku.value.trim();
+  const item = findInventoryBySku(sku);
+  const tipo = elements.movementType.value.trim().toUpperCase();
+  const cantidadText = elements.movementQuantity.value.trim();
+  const cantidad = parseNumber(cantidadText);
+
+  if (!MOVEMENT_TYPES.includes(tipo)) {
+    return { ok: false, message: "Selecciona un tipo de movimiento válido." };
+  }
+
+  if (!sku) {
+    return { ok: false, message: "Captura un SKU." };
+  }
+
+  if (!item) {
+    return { ok: false, message: "El SKU capturado no existe en STOCK_ACTUAL." };
+  }
+
+  if (!cantidadText) {
+    return { ok: false, message: "Captura la cantidad del movimiento." };
+  }
+
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    return { ok: false, message: "La cantidad debe ser mayor a cero." };
+  }
+
+  if (NEGATIVE_MOVEMENT_TYPES.has(tipo) && cantidad > item.disponibleReal.value) {
+    return {
+      ok: false,
+      message: `No hay suficiente stock disponible. Disponible real: ${formatNumber(
+        item.disponibleReal.value,
+        item.disponibleReal.hasValue,
+      )}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    movement: {
+      sku: item.sku,
+      articulo: item.articulo || item.descripcion || "",
+      tipo,
+      cantidad,
+      unidad: item.unidad || "",
+      origenDestino: elements.movementOriginDestination.value.trim(),
+      responsable: elements.movementResponsible.value.trim(),
+      folioOficio: elements.movementFolio.value.trim(),
+      evidencia: elements.movementEvidence.value.trim(),
+      observaciones: elements.movementNotes.value.trim(),
+      capturo: elements.movementCapturedBy.value.trim(),
+    },
+  };
+}
+
+function findInventoryBySku(value) {
+  const requestedSku = normalizeKey(value);
+  if (!requestedSku) return null;
+  return state.rows.find((row) => normalizeKey(row.sku) === requestedSku) || null;
+}
+
+async function postMovement(movement) {
+  const payload = {
+    action: "createMovement",
+    movement: {
+      sku: movement.sku,
+      tipo: movement.tipo,
+      cantidad: movement.cantidad,
+      origenDestino: movement.origenDestino,
+      responsable: movement.responsable,
+      folioOficio: movement.folioOficio,
+      evidencia: movement.evidencia,
+      observaciones: movement.observaciones,
+      capturo: movement.capturo,
+    },
+  };
+
+  const response = await fetch(CONFIG.appsScriptUrl.trim(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("El endpoint no respondió con JSON válido.");
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed.message || `Error HTTP ${response.status}`);
+  }
+
+  return parsed;
+}
+
+function addLocalMovement(movement) {
+  const localMovement = {
+    fecha: formatTime(new Date()),
+    sku: movement.sku,
+    articulo: movement.articulo,
+    tipo: movement.tipo,
+    cantidad: { value: movement.cantidad, hasValue: true },
+    unidad: movement.unidad,
+    origenDestino: movement.origenDestino,
+    responsable: movement.responsable,
+    folioOficio: movement.folioOficio,
+    evidencia: movement.evidencia,
+    estatusMovimiento: "APLICADO",
+    observaciones: movement.observaciones,
+    capturo: movement.capturo,
+    sortTime: Date.now(),
+  };
+
+  state.movements = [localMovement, ...state.movements].slice(0, 25);
+  renderMovementsTable(state.movements);
+}
+
+function showMovementMessage(message, type) {
+  elements.movementFormMessage.hidden = false;
+  elements.movementFormMessage.classList.remove("success", "info");
+  if (type === "success") elements.movementFormMessage.classList.add("success");
+  if (type === "info") elements.movementFormMessage.classList.add("info");
+  elements.movementFormMessage.textContent = message;
+}
+
+function hideMovementMessage() {
+  elements.movementFormMessage.hidden = true;
+  elements.movementFormMessage.classList.remove("success", "info");
+  elements.movementFormMessage.textContent = "";
+}
+
+function setSaveButtonLoading(isLoading) {
+  state.savingMovement = isLoading;
+  elements.saveMovementBtn.disabled = isLoading;
+  elements.saveMovementBtn.textContent = isLoading ? "Guardando..." : "Guardar movimiento";
+}
+
 function escapeHTML(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -690,4 +1108,5 @@ window.InventoryBodega = {
   escapeHTML,
   formatNumber,
   loadInventory,
+  loadMovements,
 };

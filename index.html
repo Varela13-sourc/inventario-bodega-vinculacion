@@ -9,12 +9,13 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="topbar-copy">
           <p class="eyebrow">Gobierno del Estado de Chihuahua</p>
           <h1>Inventario Bodega · Vinculación Ciudadana</h1>
-          <p class="subtitle">Panel ejecutivo de bodega</p>
+          <p class="subtitle">Control ejecutivo de stock, reservas y movimientos de bodega</p>
         </div>
         <div class="status-block" aria-live="polite">
+          <span class="archive-mark">STOCK_ACTUAL</span>
           <span id="loadStatus" class="load-status">Sincronizando...</span>
           <span id="visualUpdate" class="visual-update">—</span>
         </div>
@@ -56,7 +57,7 @@
           </article>
         </section>
 
-        <section class="attention-band" aria-labelledby="attentionTitle">
+        <section class="attention-band panel" aria-labelledby="attentionTitle">
           <div class="section-heading">
             <div>
               <p class="eyebrow">Atención inmediata</p>
@@ -67,22 +68,27 @@
           <div id="alertsList" class="alerts-list" aria-live="polite"></div>
         </section>
 
-        <section class="inventory-tools" aria-label="Filtros de inventario">
-          <div class="tool-row">
-            <label class="search-control" for="searchInput">
-              <span>Buscar</span>
-              <input
-                id="searchInput"
-                type="search"
-                autocomplete="off"
-                placeholder="SKU, artículo, descripción, marca u observaciones"
-              />
-            </label>
+        <section class="inventory-tools panel" aria-label="Filtros de inventario">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Consulta</p>
+              <h2>Filtros de inventario</h2>
+            </div>
             <div class="button-group">
-              <button id="clearFiltersBtn" class="secondary-btn" type="button">Limpiar</button>
+              <button id="clearFiltersBtn" class="secondary-btn" type="button">Limpiar filtros</button>
               <button id="refreshBtn" class="primary-btn" type="button">Refrescar datos</button>
             </div>
           </div>
+
+          <label class="search-control" for="searchInput">
+            <span>Buscar</span>
+            <input
+              id="searchInput"
+              type="search"
+              autocomplete="off"
+              placeholder="SKU, artículo, descripción, marca u observaciones"
+            />
+          </label>
 
           <div class="filter-grid">
             <label>
@@ -112,7 +118,7 @@
           </div>
         </section>
 
-        <section class="table-section" aria-labelledby="tableTitle">
+        <section class="table-section panel" aria-labelledby="tableTitle">
           <div class="section-heading compact">
             <div>
               <p class="eyebrow">Stock actual</p>
@@ -146,45 +152,140 @@
           </div>
         </section>
 
-        <section class="movements-section" aria-labelledby="movementsTitle">
-          <div class="section-heading compact">
+        <section class="operations-section panel" aria-labelledby="operationsTitle">
+          <div class="section-heading">
             <div>
               <p class="eyebrow">Operación</p>
-              <h2 id="movementsTitle">Últimos movimientos</h2>
+              <h2 id="operationsTitle">Operaciones de bodega</h2>
             </div>
-            <span class="count-pill muted">Preparado</span>
+            <button id="openMovementModalBtn" class="primary-btn" type="button">
+              Registrar movimiento
+            </button>
           </div>
 
-          <div class="movement-layout">
-            <form class="movement-form" aria-label="Registro de entradas y salidas">
-              <label>
-                <span>Tipo</span>
-                <select disabled>
-                  <option>Entrada</option>
-                  <option>Salida</option>
-                </select>
-              </label>
-              <label>
-                <span>SKU</span>
-                <input type="text" disabled />
-              </label>
-              <label>
-                <span>Cantidad</span>
-                <input type="number" disabled min="0" />
-              </label>
-              <label>
-                <span>Responsable</span>
-                <input type="text" disabled />
-              </label>
-              <button class="secondary-btn" type="button" disabled>Registrar</button>
-            </form>
-            <div class="movement-empty">
-              Registro de entradas y salidas pendiente de conexión a Apps Script.
+          <div id="operationStatus" class="operation-status" role="status">
+            Registro pendiente de conexión a Apps Script.
+          </div>
+
+          <div class="movement-table-heading">
+            <div>
+              <p class="eyebrow">Bitácora</p>
+              <h3>Últimos movimientos</h3>
             </div>
+            <span id="movementCount" class="count-pill muted">0 movimientos</span>
+          </div>
+
+          <div class="table-wrap movements-wrap">
+            <table class="movements-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>SKU</th>
+                  <th>Artículo</th>
+                  <th>Tipo</th>
+                  <th class="number-cell">Cantidad</th>
+                  <th>Responsable</th>
+                  <th>Folio/oficio</th>
+                  <th>Observaciones</th>
+                </tr>
+              </thead>
+              <tbody id="movementsBody">
+                <tr>
+                  <td colspan="8">
+                    <div class="empty-state">Últimos movimientos pendientes de conexión.</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
       </main>
     </div>
+
+    <dialog id="movementDialog" class="movement-dialog" aria-labelledby="movementDialogTitle">
+      <form id="movementForm" class="movement-dialog-card" method="dialog" novalidate>
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Captura</p>
+            <h2 id="movementDialogTitle">Registrar movimiento</h2>
+          </div>
+          <button id="closeMovementModalBtn" class="icon-btn" type="button" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+
+        <div id="movementFormMessage" class="form-message" role="alert" hidden></div>
+
+        <div class="movement-form-grid">
+          <label>
+            <span>Tipo de movimiento</span>
+            <select id="movementType" required>
+              <option value="ENTRADA">ENTRADA</option>
+              <option value="SALIDA">SALIDA</option>
+              <option value="AJUSTE+">AJUSTE+</option>
+              <option value="AJUSTE-">AJUSTE-</option>
+              <option value="TRASLADO">TRASLADO</option>
+            </select>
+          </label>
+
+          <label>
+            <span>SKU</span>
+            <input id="movementSku" list="skuOptions" autocomplete="off" placeholder="Buscar o capturar SKU" required />
+            <datalist id="skuOptions"></datalist>
+          </label>
+
+          <label class="span-2">
+            <span>Artículo / Insumo</span>
+            <input id="movementArticle" type="text" readonly />
+          </label>
+
+          <label>
+            <span>Cantidad</span>
+            <input id="movementQuantity" type="number" min="0.01" step="0.01" inputmode="decimal" required />
+          </label>
+
+          <label>
+            <span>Unidad</span>
+            <input id="movementUnit" type="text" readonly />
+          </label>
+
+          <label class="span-2">
+            <span>Origen / Destino</span>
+            <input id="movementOriginDestination" type="text" autocomplete="off" />
+          </label>
+
+          <label>
+            <span>Responsable</span>
+            <input id="movementResponsible" type="text" autocomplete="off" />
+          </label>
+
+          <label>
+            <span>Folio / oficio</span>
+            <input id="movementFolio" type="text" autocomplete="off" />
+          </label>
+
+          <label class="span-2">
+            <span>Evidencia / liga</span>
+            <input id="movementEvidence" type="url" autocomplete="off" placeholder="https://..." />
+          </label>
+
+          <label class="span-2">
+            <span>Observaciones</span>
+            <textarea id="movementNotes" rows="3"></textarea>
+          </label>
+
+          <label>
+            <span>Capturó</span>
+            <input id="movementCapturedBy" type="text" autocomplete="off" />
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="cancelMovementBtn" class="secondary-btn" type="button">Cancelar</button>
+          <button id="saveMovementBtn" class="primary-btn" type="submit">Guardar movimiento</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="./app.js"></script>
   </body>
