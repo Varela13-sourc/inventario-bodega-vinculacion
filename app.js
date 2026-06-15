@@ -2,7 +2,7 @@ const CONFIG = {
   stockActualCsvUrl:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vR3YzCfkRrc-osRMQ9WWQxJLvoKjMgyHe4b_-GpwpeDCNfWrIfoA90GGKO2SAkaPV1yMZwsG2T6oMkz/pub?gid=265782808&single=true&output=csv",
   movimientosCsvUrl: "",
-  appsScriptUrl: "",
+  appsScriptUrl: "https://script.google.com/macros/s/AKfycbxCoT7LHUcWgHQ_pVPBcIcsbcQvtuBf7UPdbKY5k1b-TAJ9sNqXeFtXmBlTYAaCPQJFdg/exec",
   refreshIntervalMs: 60000,
   appName: "Inventario Bodega · Vinculación Ciudadana",
 };
