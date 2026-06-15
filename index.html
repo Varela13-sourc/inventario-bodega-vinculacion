@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inventario Bodega · Vinculación Ciudadana</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Gobierno del Estado de Chihuahua</p>
+          <h1>Inventario Bodega · Vinculación Ciudadana</h1>
+          <p class="subtitle">Panel ejecutivo de bodega</p>
+        </div>
+        <div class="status-block" aria-live="polite">
+          <span id="loadStatus" class="load-status">Sincronizando...</span>
+          <span id="visualUpdate" class="visual-update">—</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="kpi-grid" aria-label="Indicadores ejecutivos">
+          <article class="kpi-card">
+            <span>Total artículos</span>
+            <strong id="kpiTotalItems">—</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Existencia física</span>
+            <strong id="kpiPhysicalStock">—</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Disponible real</span>
+            <strong id="kpiAvailableStock">—</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Comprometido</span>
+            <strong id="kpiReservedStock">—</strong>
+          </article>
+          <article class="kpi-card alert-red">
+            <span>Semáforo rojo</span>
+            <strong id="kpiRedItems">—</strong>
+          </article>
+          <article class="kpi-card alert-critical">
+            <span>Sin stock</span>
+            <strong id="kpiOutOfStock">—</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Proveedor pendiente</span>
+            <strong id="kpiPendingProvider">—</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Última lectura</span>
+            <strong id="kpiLastSync">—</strong>
+          </article>
+        </section>
+
+        <section class="attention-band" aria-labelledby="attentionTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Atención inmediata</p>
+              <h2 id="attentionTitle">Riesgos de abasto</h2>
+            </div>
+            <span id="alertCount" class="count-pill">0 alertas</span>
+          </div>
+          <div id="alertsList" class="alerts-list" aria-live="polite"></div>
+        </section>
+
+        <section class="inventory-tools" aria-label="Filtros de inventario">
+          <div class="tool-row">
+            <label class="search-control" for="searchInput">
+              <span>Buscar</span>
+              <input
+                id="searchInput"
+                type="search"
+                autocomplete="off"
+                placeholder="SKU, artículo, descripción, marca u observaciones"
+              />
+            </label>
+            <div class="button-group">
+              <button id="clearFiltersBtn" class="secondary-btn" type="button">Limpiar</button>
+              <button id="refreshBtn" class="primary-btn" type="button">Refrescar datos</button>
+            </div>
+          </div>
+
+          <div class="filter-grid">
+            <label>
+              <span>Categoría</span>
+              <select id="categoryFilter">
+                <option value="">Todas</option>
+              </select>
+            </label>
+            <label>
+              <span>Semáforo</span>
+              <select id="semaphoreFilter">
+                <option value="">Todos</option>
+              </select>
+            </label>
+            <label>
+              <span>Unidad</span>
+              <select id="unitFilter">
+                <option value="">Todas</option>
+              </select>
+            </label>
+            <label>
+              <span>Ubicación</span>
+              <select id="locationFilter">
+                <option value="">Todas</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="table-section" aria-labelledby="tableTitle">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Stock actual</p>
+              <h2 id="tableTitle">Inventario Vinculación</h2>
+            </div>
+            <span id="tableCount" class="count-pill">0 registros</span>
+          </div>
+
+          <div id="errorMessage" class="error-message" role="alert" hidden></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Categoría</th>
+                  <th>Artículo / Insumo</th>
+                  <th>Unidad</th>
+                  <th class="number-cell">Existencia física</th>
+                  <th class="number-cell">Comprometido</th>
+                  <th class="number-cell">Disponible real</th>
+                  <th class="number-cell">Stock mínimo</th>
+                  <th>Semáforo</th>
+                  <th>Ubicación</th>
+                  <th>Responsable</th>
+                  <th>Observaciones</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="movements-section" aria-labelledby="movementsTitle">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Operación</p>
+              <h2 id="movementsTitle">Últimos movimientos</h2>
+            </div>
+            <span class="count-pill muted">Preparado</span>
+          </div>
+
+          <div class="movement-layout">
+            <form class="movement-form" aria-label="Registro de entradas y salidas">
+              <label>
+                <span>Tipo</span>
+                <select disabled>
+                  <option>Entrada</option>
+                  <option>Salida</option>
+                </select>
+              </label>
+              <label>
+                <span>SKU</span>
+                <input type="text" disabled />
+              </label>
+              <label>
+                <span>Cantidad</span>
+                <input type="number" disabled min="0" />
+              </label>
+              <label>
+                <span>Responsable</span>
+                <input type="text" disabled />
+              </label>
+              <button class="secondary-btn" type="button" disabled>Registrar</button>
+            </form>
+            <div class="movement-empty">
+              Registro de entradas y salidas pendiente de conexión a Apps Script.
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
